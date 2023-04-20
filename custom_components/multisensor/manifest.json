@@ -1,12 +1,11 @@
-  {
-    "domain": "multisensor",
-    "name": "VTEC multisensor",
-    "codeowners": ["@H1Xu"],
-    "dependencies": ["mqtt"],
-    "documentation": "https://github.com/H1Xu/multisensor-integration",
-    "issue_tracker": "https://github.com/H1Xu/multisensor-integration/issues",
-    "iot_class": "cloud_polling",
-    "requirements": [],
-    "version":"0.1.0",
-    "logo": "images/VTEC.jpg"
-  }
+{
+  "domain": "Isensit",
+  "name": "multisensor",
+  "config_flow": true,
+  "dependencies": ["mqtt"],
+  "documentation": "https://github.com/thermiq/thermiq_mqtt-ha",
+  "issue_tracker": "https://github.com/thermiq/thermiq_mqtt-ha/issues",
+  "codeowners": ["@H1Xu"],
+  "iot_class": "local_push",
+  "version": "2.0.6"
+}
