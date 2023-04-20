@@ -1,103 +1,280 @@
-from homeassistant import config_entries, core
-from homeassistant.const import CONF_NAME, CONF_METHOD, CONF_ID
-#import constant from homeassistant
-#config_entry and core is the key function of running home assistant
-
-from typing import Any
-
-from vtec_api import SensorID
-
-from .const import DOMAIN, DEFAULT_NAME, SENSOR_ID
-#import configuration name and id from .const
-
+"""Config flow"""
+import logging
 import voluptuous as vol
-#verify and handle the configuration data
+from homeassistant import config_entries, exceptions
+from homeassistant.core import callback
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import selector
+from homeassistant.components.mqtt import valid_subscribe_topic
+
+from .const import (
+    DOMAIN,
+    CONF_ID,
+    CONF_MQTT_NODE,
+    CONF_MQTT_HEX,
+    CONF_MQTT_DBG,
+    CONF_LANGUAGE,
+    AVAILABLE_LANGUAGES,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+# ToDo:
+#   Add check of Nodename
+#   Select list of languages
+#   check ID to be spaceless+[a-z/A-Z/0-9]
 
 
-class MultisensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    #define a class inherited from config_entries.Configflow
-    #handle config flow
+class InvalidPostalCode(exceptions.HomeAssistantError):
+    """Error to indicate we cannot connect."""
+
+
+class InvalidDomainName(exceptions.HomeAssistantError):
+    """Error to indicate we cannot connect."""
+
+
+class DomainConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Component config flow."""
 
     VERSION = 1
-    #plugins version number
 
-    async def async_step_import(self, config: dict[str, Any]):
-        #import configuration from config.yaml
-        name = config.get(CONF_NAME, DEFAULT_NAME)
-        #get config name from file and use default name if there is no name
+    # FIXME: DOES NOT ACTUALLY VALIDATE ANYTHING! WE NEED THIS! =)
+    async def validate_input(self, data):
+        """Validate input in step user"""
+        return data
 
-        self._async_abort_entries_match({CONF_NAME:name})
-        #end the config sharing the same name
+    async def async_step_user(self, user_input=None):
 
-        config[CONF_NAME] = name
-        return await self.async_step_user(user_input = config)
-        #return input of users
-    
-    async def async_step_user(self, user_input: dict[str, Any]):
-        #handle input of users
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_ID, default="vp1"): cv.string,
+                vol.Required(CONF_MQTT_NODE, default="ThermIQ/ThermIQ-mqtt"): cv.string,
+                vol.Required(CONF_LANGUAGE, default="en"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["en", "se", "fi", "no", "de"],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(CONF_MQTT_HEX, default=False): cv.boolean,
+                vol.Required(CONF_MQTT_DBG, default=False): cv.boolean,
+            }
+        )
 
         if user_input is None:
-            #give user one form to fill in
-            return self.async_show_form(
-                step_id = "user",
-                data_schema = vol.Schema({
-                    vol.Required(CONF_METHOD): str
-                })
-                #use vol to verify the data type
-            )
-        if user_input[CONF_METHOD] == SENSOR_ID:
-            return await self.async_validate_input()
-    
-    async def async_validate_input(self, user_input=None):
-        #validate the input of users
-        errors = {}
-        #create a new dic to record all errors
-        if user_input:
-            id = user_input[CONF_ID]
-            method = CONF_ID
-            requester = SensorID(None, None, None, id, method)
-            #inside the brackets(name,device_class,icon,unique id,method)
-            #id,method indicates the id and method to gather from input
-        
-        Validate = requester.GetData()
-        if Validate:
-            if Validate["status"] == "ok":
-                if "status" in Validate["data"]:
-                    if Validate["data"]["status"] == "error":
-                        if Validate["data"]["msg"] == "Unknown ID":
-                            errors["base"] = "unknow_sensor_id"
-                        else:
-                            errors["base"] = "server_error"
-            elif Validate["status"] == "error":
-                if Validate["data"] == "Invalid key":
-                    errors["base"] = "invalid_key"
-                else:
-                    errors["base"] = "server_error"
-            else:
-                errors["base"] = "server_error"
+            return self.async_show_form(step_id="user", data_schema=data_schema)
         else:
-            errors["base"] = "server_not_available"
-        
-        SensorName = requester.GetSensorName()
-        name = user_input.get(CONF_NAME, SensorName)
 
-        if not errors:
-            await self.async_set_unique_id(name)
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title = name,
-                data={
-                    CONF_ID: id,
-                    CONF_NAME: name
+            error_schema = vol.Schema(
+                {
+                    vol.Required(CONF_ID, default=user_input[CONF_ID]): cv.string,
+                    vol.Required(
+                        CONF_MQTT_NODE, default=user_input[CONF_MQTT_NODE]
+                    ): cv.string,
+                    vol.Required(
+                        CONF_LANGUAGE, default=user_input[CONF_LANGUAGE]
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["en", "se", "fi", "no", "de"],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_MQTT_HEX, default=user_input[CONF_MQTT_HEX]
+                    ): cv.boolean,
+                    vol.Required(
+                        CONF_MQTT_DBG, default=user_input[CONF_MQTT_DBG]
+                    ): cv.boolean,
                 }
             )
-        
-        return self.async_show_form
 
-        
+            try:
+                id_name = user_input[CONF_ID]
+                unique_id = f"{DOMAIN}_{id_name}"
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "invalid_id"},
+                )
+
+            try:
+                prefix = user_input[CONF_MQTT_NODE]
+                if prefix.endswith("/#"):
+                    prefix = prefix[:-2]
+                elif prefix.endswith("/"):
+                    prefix = prefix[:-1]
+                valid_subscribe_topic(f"{prefix}/#")
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "invalid_nodename"},
+                )
+
+            try:
+                lang = AVAILABLE_LANGUAGES.index(user_input[CONF_LANGUAGE])
+
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "invalid_language"},
+                )
+
+            try:
+
+                return self.async_create_entry(
+                    title=unique_id,
+                    data={
+                        CONF_ID: id_name,
+                        CONF_MQTT_NODE: prefix,
+                        CONF_LANGUAGE: user_input[CONF_LANGUAGE],
+                        CONF_MQTT_HEX: user_input[CONF_MQTT_HEX],
+                        CONF_MQTT_DBG: user_input[CONF_MQTT_DBG],
+                    },
+                    options={},
+                )
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "creation_error"},
+                )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return OptionsFlow(config_entry)
 
 
+class OptionsFlow(config_entries.OptionsFlow):
+    """HASL config flow options handler."""
+
+    def __init__(self, config_entry):
+        """Initialize HASL options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options."""
+        return await self.async_step_user(user_input)
+
+    async def validate_input(self, data):
+        """Validate input in step user"""
+        # FIXME: DOES NOT ACTUALLY VALIDATE ANYTHING! WE NEED THIS! =)
+        return data
+
+    async def async_step_user(self, user_input=None):
+        s = self.config_entry.data.get(CONF_LANGUAGE)
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_MQTT_NODE, default=self.config_entry.data.get(CONF_MQTT_NODE)
+                ): cv.string,
+                vol.Required(
+                    CONF_LANGUAGE,
+                    default=self.config_entry.data.get(CONF_LANGUAGE),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["en", "se", "fi", "no", "de"],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(
+                    CONF_MQTT_HEX, default=self.config_entry.data.get(CONF_MQTT_HEX)
+                ): cv.boolean,
+                vol.Required(
+                    CONF_MQTT_DBG, default=self.config_entry.data.get(CONF_MQTT_DBG)
+                ): cv.boolean,
+            }
+        )
+
+        if user_input is None:
+            return self.async_show_form(step_id="user", data_schema=data_schema)
+        else:
+            error_schema = vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MQTT_NODE, default=user_input[CONF_MQTT_NODE]
+                    ): cv.string,
+                    vol.Required(
+                        CONF_LANGUAGE, default=user_input[CONF_LANGUAGE]
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["en", "se", "fi", "no", "de"],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_MQTT_HEX, default=user_input[CONF_MQTT_HEX]
+                    ): cv.boolean,
+                    vol.Required(
+                        CONF_MQTT_DBG, default=user_input[CONF_MQTT_DBG]
+                    ): cv.boolean,
+                }
+            )
+
+            try:
+                entryTitle = self.config_entry.title
+                id_name = self.config_entry.data[CONF_ID]
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "invalid_id"},
+                )
+
+            try:
+                prefix = user_input[CONF_MQTT_NODE]
+                if prefix.endswith("/#"):
+                    prefix = prefix[:-2]
+                elif prefix.endswith("/"):
+                    prefix = prefix[:-1]
+                valid_subscribe_topic(f"{prefix}/#")
+
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "invalid_nodename"},
+                )
+
+            try:
+                lang = AVAILABLE_LANGUAGES.index(user_input[CONF_LANGUAGE])
+
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "invalid_language"},
+                )
+
+            try:
+                data = {
+                    CONF_ID: id_name,
+                    CONF_MQTT_NODE: prefix,
+                    CONF_LANGUAGE: user_input[CONF_LANGUAGE],
+                    CONF_MQTT_HEX: user_input[CONF_MQTT_HEX],
+                    CONF_MQTT_DBG: user_input[CONF_MQTT_DBG],
+                }
+
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=data,
+                    options={},
+                )
+
+                # This is the options entry, jeep it empty
+                return self.async_create_entry(title="", data={})
+
+            except:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=error_schema,
+                    errors={"base": "update_error"},
+                )
 
 
     
