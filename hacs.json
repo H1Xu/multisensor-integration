@@ -1,5 +1,5 @@
 {
-  "name": "ThermIQ MQTT Integration",
+  "name": "multisensor_mqtt",
   "render_readme": true,
   "homeassistant": "2023.3.5"
 }
