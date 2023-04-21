@@ -1,110 +1,79 @@
-"""Config flow for multisensor_mqtt."""
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD
-from homeassistant.core import callback
-import homeassistant.helpers.config_validation as cv
+from homeassistant.const import CONF_NAME
 
-from .const import DOMAIN
+from .const import (
+    CONF_BROKER_HOST,
+    CONF_BROKER_PASSWORD,
+    CONF_BROKER_PORT,
+    CONF_BROKER_USERNAME,
+    DOMAIN,
+)
 
-
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for multisensor_mqtt."""
+class ThermiqMQTTFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a Thermiq MQTT config flow."""
 
     VERSION = 1
-    CONNECTION_CLASS = config_entries.CONN_CLASS_ASSUMED
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
+
+    def __init__(self):
+        """Initialize the Thermiq MQTT flow."""
+        self.broker_host = None
+        self.broker_port = None
+        self.broker_username = None
+        self.broker_password = None
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial step."""
+        """Handle a flow initialized by the user."""
+        errors = {}
         if user_input is not None:
             # Validate the user input
             try:
-                await validate_input(self.hass, user_input)
-            except InvalidAuthError:
-                return self.async_show_form(
-                    step_id="user", errors={"base": "invalid_auth"}
-                )
-            except CannotConnectError:
-                return self.async_show_form(
-                    step_id="user", errors={"base": "cannot_connect"}
-                )
-            except Exception:
-                return self.async_show_form(
-                    step_id="user", errors={"base": "unknown"}
+                await self._validate_input(user_input)
+            except vol.Invalid as exc:
+                errors[CONF_BROKER_HOST] = str(exc)
+
+            if not errors:
+                # Input is valid, create the config entry
+                return self.async_create_entry(
+                    title=user_input[CONF_NAME],
+                    data={
+                        CONF_BROKER_HOST: user_input[CONF_BROKER_HOST],
+                        CONF_BROKER_PORT: user_input.get(CONF_BROKER_PORT),
+                        CONF_BROKER_USERNAME: user_input.get(CONF_BROKER_USERNAME),
+                        CONF_BROKER_PASSWORD: user_input.get(CONF_BROKER_PASSWORD),
+                    },
                 )
 
-            return self.async_create_entry(
-                title=user_input[CONF_HOST], data=user_input
-            )
-
-        # Show the form
+        # Show the configuration form to the user
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST): str,
-                    vol.Required(CONF_PORT, default=1883): cv.positive_int,
-                    vol.Required(CONF_USERNAME, default=""): str,
-                    vol.Required(CONF_PASSWORD, default=""): str,
+                    vol.Required(CONF_NAME): str,
+                    vol.Required(CONF_BROKER_HOST): str,
+                    vol.Optional(CONF_BROKER_PORT, default=1883): int,
+                    vol.Optional(CONF_BROKER_USERNAME): str,
+                    vol.Optional(CONF_BROKER_PASSWORD): str,
                 }
             ),
-            errors={},
+            errors=errors,
         )
 
+    async def _validate_input(self, user_input):
+        """Validate the user input."""
+        broker_host = user_input.get(CONF_BROKER_HOST)
+        broker_port = user_input.get(CONF_BROKER_PORT)
+        broker_username = user_input.get(CONF_BROKER_USERNAME)
+        broker_password = user_input.get(CONF_BROKER_PASSWORD)
 
-async def validate_input(hass, user_input):
-    """Validate the user input allows us to connect."""
-    host = user_input[CONF_HOST]
-    port = user_input[CONF_PORT]
-    username = user_input[CONF_USERNAME]
-    password = user_input[CONF_PASSWORD]
+        if not broker_host:
+            raise vol.Invalid("Missing broker host.")
 
-    # Test the connection to the broker
-    try:
-        # This will raise an exception if we cannot connect to the broker
-        async with aioMqtt(hass, host, port, username, password):
-            pass
-    except asyncio.TimeoutError:
-        raise CannotConnectError
-    except aioMqttException:
-        raise InvalidAuthError
+        if broker_port is not None and (broker_port < 1 or broker_port > 65535):
+            raise vol.Invalid("Invalid broker port.")
 
-
-class CannotConnectError(Exception):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidAuthError(Exception):
-    """Error to indicate there is invalid auth."""
-
-
-class aioMqtt:
-    """Home Assistant aioMqtt client wrapper."""
-
-    def __init__(self, hass, host, port, username, password):
-        """Initialize the client."""
-        self.hass = hass
-        self.client = None
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-
-    async def __aenter__(self):
-        """Async enter."""
-        self.client = self.hass.components.mqtt.async_get_client(
-            self.hass.data[DOMAIN]["mqtt_config"]
-        )
-
-        try:
-            await self.client.connect()
-        except:
-            await self.client.disconnect()
-            raise
-
-        return self.client
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        """Async exit."""
-        await self.client.disconnect()
-
+        self.broker_host = broker_host
+        self.broker_port = broker_port
+        self.broker_username = broker_username
+        self.broker_password = broker_password
