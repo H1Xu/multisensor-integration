@@ -1,6 +1,6 @@
 {
   "domain": "thermiq_mqtt",
-  "name": "ThermIQ MQTT Integration",
+  "name": "multisensor_mqtt",
   "config_flow": true,
   "dependencies": ["mqtt"],
   "documentation": "https://github.com/thermiq/thermiq_mqtt-ha",
