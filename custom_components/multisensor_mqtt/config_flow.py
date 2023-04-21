@@ -1,226 +1,110 @@
-"""Config flow"""
-import logging
+"""Config flow for multisensor_mqtt."""
 import voluptuous as vol
-from homeassistant import config_entries, exceptions
+from homeassistant import config_entries
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import callback
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import selector
-from homeassistant.components.mqtt import valid_subscribe_topic
+import homeassistant.helpers.config_validation as cv
 
-from .const import (
-    DOMAIN,
-    CONF_ID,
-    CONF_MQTT_NODE,
-    CONF_MQTT_HEX,
-    CONF_MQTT_DBG,
-    CONF_LANGUAGE,
-    AVAILABLE_LANGUAGES,
-)
-
-_LOGGER = logging.getLogger(__name__)
-
-# ToDo:
-#   Add check of Nodename
-#   Select list of languages
-#   check ID to be spaceless+[a-z/A-Z/0-9]
+from .const import DOMAIN
 
 
-class InvalidPostalCode(exceptions.HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidDomainName(exceptions.HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class DomainConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Component config flow."""
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for multisensor_mqtt."""
 
     VERSION = 1
-
-    # FIXME: DOES NOT ACTUALLY VALIDATE ANYTHING! WE NEED THIS! =)
-    async def validate_input(self, data):
-        """Validate input in step user"""
-        return data
+    CONNECTION_CLASS = config_entries.CONN_CLASS_ASSUMED
 
     async def async_step_user(self, user_input=None):
+        """Handle the initial step."""
+        if user_input is not None:
+            # Validate the user input
+            try:
+                await validate_input(self.hass, user_input)
+            except InvalidAuthError:
+                return self.async_show_form(
+                    step_id="user", errors={"base": "invalid_auth"}
+                )
+            except CannotConnectError:
+                return self.async_show_form(
+                    step_id="user", errors={"base": "cannot_connect"}
+                )
+            except Exception:
+                return self.async_show_form(
+                    step_id="user", errors={"base": "unknown"}
+                )
 
-        data_schema = vol.Schema(
-            {
-                vol.Required(CONF_ID, default="vp1"): cv.string,
-                vol.Required(CONF_MQTT_NODE, default="ThermIQ/ThermIQ-mqtt"): cv.string,
-            }
-        )
-
-        if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=data_schema)
-        else:
-
-            error_schema = vol.Schema(
-                {
-                    vol.Required(CONF_ID, default=user_input[CONF_ID]): cv.string,
-                    vol.Required(
-                        CONF_MQTT_NODE, default=user_input[CONF_MQTT_NODE]
-                    ): cv.string,
-                }
+            return self.async_create_entry(
+                title=user_input[CONF_HOST], data=user_input
             )
 
-            try:
-                id_name = user_input[CONF_ID]
-                unique_id = f"{DOMAIN}_{id_name}"
-                await self.async_set_unique_id(unique_id)
-                self._abort_if_unique_id_configured()
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "invalid_id"},
-                )
-
-            try:
-                prefix = user_input[CONF_MQTT_NODE]
-                if prefix.endswith("/#"):
-                    prefix = prefix[:-2]
-                elif prefix.endswith("/"):
-                    prefix = prefix[:-1]
-                valid_subscribe_topic(f"{prefix}/#")
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "invalid_nodename"},
-                )
-
-            try:
-                lang = AVAILABLE_LANGUAGES.index(user_input[CONF_LANGUAGE])
-
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "invalid_language"},
-                )
-
-            try:
-
-                return self.async_create_entry(
-                    title=unique_id,
-                    data={
-                        CONF_ID: id_name,
-                        CONF_MQTT_NODE: prefix,
-                        CONF_LANGUAGE: user_input[CONF_LANGUAGE],
-                        CONF_MQTT_HEX: user_input[CONF_MQTT_HEX],
-                        CONF_MQTT_DBG: user_input[CONF_MQTT_DBG],
-                    },
-                    options={},
-                )
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "creation_error"},
-                )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        return OptionsFlow(config_entry)
-
-
-class OptionsFlow(config_entries.OptionsFlow):
-    """HASL config flow options handler."""
-
-    def __init__(self, config_entry):
-        """Initialize HASL options flow."""
-        self.config_entry = config_entry
-
-    async def async_step_init(self, user_input=None):
-        """Manage the options."""
-        return await self.async_step_user(user_input)
-
-    async def validate_input(self, data):
-        """Validate input in step user"""
-        # FIXME: DOES NOT ACTUALLY VALIDATE ANYTHING! WE NEED THIS! =)
-        return data
-
-    async def async_step_user(self, user_input=None):
-        s = self.config_entry.data.get(CONF_LANGUAGE)
-
-        data_schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_MQTT_NODE, default=self.config_entry.data.get(CONF_MQTT_NODE)
-                ): cv.string,
-            }
+        # Show the form
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST): str,
+                    vol.Required(CONF_PORT, default=1883): cv.positive_int,
+                    vol.Required(CONF_USERNAME, default=""): str,
+                    vol.Required(CONF_PASSWORD, default=""): str,
+                }
+            ),
+            errors={},
         )
 
-        if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=data_schema)
-        else:
-            error_schema = vol.Schema(
-                {
-                    vol.Required(
-                        CONF_MQTT_NODE, default=user_input[CONF_MQTT_NODE]
-                    ): cv.string,
-                }
-            )
 
-            try:
-                entryTitle = self.config_entry.title
-                id_name = self.config_entry.data[CONF_ID]
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "invalid_id"},
-                )
+async def validate_input(hass, user_input):
+    """Validate the user input allows us to connect."""
+    host = user_input[CONF_HOST]
+    port = user_input[CONF_PORT]
+    username = user_input[CONF_USERNAME]
+    password = user_input[CONF_PASSWORD]
 
-            try:
-                prefix = user_input[CONF_MQTT_NODE]
-                if prefix.endswith("/#"):
-                    prefix = prefix[:-2]
-                elif prefix.endswith("/"):
-                    prefix = prefix[:-1]
-                valid_subscribe_topic(f"{prefix}/#")
+    # Test the connection to the broker
+    try:
+        # This will raise an exception if we cannot connect to the broker
+        async with aioMqtt(hass, host, port, username, password):
+            pass
+    except asyncio.TimeoutError:
+        raise CannotConnectError
+    except aioMqttException:
+        raise InvalidAuthError
 
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "invalid_nodename"},
-                )
 
-            try:
-                lang = AVAILABLE_LANGUAGES.index(user_input[CONF_LANGUAGE])
+class CannotConnectError(Exception):
+    """Error to indicate we cannot connect."""
 
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "invalid_language"},
-                )
 
-            try:
-                data = {
-                    CONF_ID: id_name,
-                    CONF_MQTT_NODE: prefix,
-                    CONF_LANGUAGE: user_input[CONF_LANGUAGE],
-                    CONF_MQTT_HEX: user_input[CONF_MQTT_HEX],
-                    CONF_MQTT_DBG: user_input[CONF_MQTT_DBG],
-                }
+class InvalidAuthError(Exception):
+    """Error to indicate there is invalid auth."""
 
-                self.hass.config_entries.async_update_entry(
-                    self.config_entry,
-                    data=data,
-                    options={},
-                )
 
-                # This is the options entry, jeep it empty
-                return self.async_create_entry(title="", data={})
+class aioMqtt:
+    """Home Assistant aioMqtt client wrapper."""
 
-            except:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=error_schema,
-                    errors={"base": "update_error"},
-                )
+    def __init__(self, hass, host, port, username, password):
+        """Initialize the client."""
+        self.hass = hass
+        self.client = None
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+
+    async def __aenter__(self):
+        """Async enter."""
+        self.client = self.hass.components.mqtt.async_get_client(
+            self.hass.data[DOMAIN]["mqtt_config"]
+        )
+
+        try:
+            await self.client.connect()
+        except:
+            await self.client.disconnect()
+            raise
+
+        return self.client
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        """Async exit."""
+        await self.client.disconnect()
+
