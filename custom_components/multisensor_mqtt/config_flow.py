@@ -49,14 +49,6 @@ class DomainConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_ID, default="vp1"): cv.string,
                 vol.Required(CONF_MQTT_NODE, default="ThermIQ/ThermIQ-mqtt"): cv.string,
-                vol.Required(CONF_LANGUAGE, default="en"): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=["en", "se", "fi", "no", "de"],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    ),
-                ),
-                vol.Required(CONF_MQTT_HEX, default=False): cv.boolean,
-                vol.Required(CONF_MQTT_DBG, default=False): cv.boolean,
             }
         )
 
@@ -70,20 +62,6 @@ class DomainConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_MQTT_NODE, default=user_input[CONF_MQTT_NODE]
                     ): cv.string,
-                    vol.Required(
-                        CONF_LANGUAGE, default=user_input[CONF_LANGUAGE]
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=["en", "se", "fi", "no", "de"],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_MQTT_HEX, default=user_input[CONF_MQTT_HEX]
-                    ): cv.boolean,
-                    vol.Required(
-                        CONF_MQTT_DBG, default=user_input[CONF_MQTT_DBG]
-                    ): cv.boolean,
                 }
             )
 
@@ -173,21 +151,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_MQTT_NODE, default=self.config_entry.data.get(CONF_MQTT_NODE)
                 ): cv.string,
-                vol.Required(
-                    CONF_LANGUAGE,
-                    default=self.config_entry.data.get(CONF_LANGUAGE),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=["en", "se", "fi", "no", "de"],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    ),
-                ),
-                vol.Required(
-                    CONF_MQTT_HEX, default=self.config_entry.data.get(CONF_MQTT_HEX)
-                ): cv.boolean,
-                vol.Required(
-                    CONF_MQTT_DBG, default=self.config_entry.data.get(CONF_MQTT_DBG)
-                ): cv.boolean,
             }
         )
 
@@ -199,20 +162,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_MQTT_NODE, default=user_input[CONF_MQTT_NODE]
                     ): cv.string,
-                    vol.Required(
-                        CONF_LANGUAGE, default=user_input[CONF_LANGUAGE]
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=["en", "se", "fi", "no", "de"],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_MQTT_HEX, default=user_input[CONF_MQTT_HEX]
-                    ): cv.boolean,
-                    vol.Required(
-                        CONF_MQTT_DBG, default=user_input[CONF_MQTT_DBG]
-                    ): cv.boolean,
                 }
             )
 
