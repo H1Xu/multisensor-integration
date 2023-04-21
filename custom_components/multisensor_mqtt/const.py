@@ -1,7 +1,7 @@
 """Constants for the component."""
 
 # Component domain, used to store component data in hass data.
-DOMAIN = "thermiq_mqtt"
+DOMAIN = "Isensit"
 
 # == ThermIQ Const
 CONF_ID = "id_name"
