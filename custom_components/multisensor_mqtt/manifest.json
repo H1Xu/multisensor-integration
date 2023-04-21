@@ -1,5 +1,5 @@
 {
-  "domain": "thermiq_mqtt",
+  "domain": "Isensit",
   "name": "multisensor_mqtt",
   "config_flow": true,
   "dependencies": ["mqtt"],
